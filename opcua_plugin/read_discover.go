@@ -463,6 +463,21 @@ func (g *OPCUAInput) decideDataChangeFilterSupport() (bool, bool) {
 //
 // It returns the total number of nodes that were successfully monitored or an error if monitoring fails.
 func (g *OPCUAInput) MonitorBatched(ctx context.Context, nodes []NodeDef) (int, error) {
+	return g.monitorBatchedFrom(ctx, nodes, 0)
+}
+
+// clientHandleFor returns the ClientHandle for the node at position pos of the
+// batch starting at batchStart, in a call whose nodes begin at handleOffset of
+// g.NodeList. The handle must be the node's index in g.NodeList, because
+// ReadBatchSubscribe resolves every notification with g.NodeList[ClientHandle].
+func clientHandleFor(handleOffset, batchStart, pos int) uint32 {
+	return uint32(handleOffset + batchStart + pos)
+}
+
+// monitorBatchedFrom monitors nodes, which start at index handleOffset of
+// g.NodeList (0 for the first call, > 0 for the trial-and-retry call that
+// continues from the failed node).
+func (g *OPCUAInput) monitorBatchedFrom(ctx context.Context, nodes []NodeDef, handleOffset int) (int, error) {
 	// Use profile-based batch size
 	maxBatchSize := g.ServerProfile.MaxBatchSize
 	if maxBatchSize == 0 {
@@ -576,7 +591,7 @@ func (g *OPCUAInput) MonitorBatched(ctx context.Context, nodes []NodeDef) (int, 
 				},
 				MonitoringMode: ua.MonitoringModeReporting,
 				RequestedParameters: &ua.MonitoringParameters{
-					ClientHandle:     uint32(batchRange.Start + pos),
+					ClientHandle:     clientHandleFor(handleOffset, batchRange.Start, pos),
 					DiscardOldest:    true,
 					Filter:           filter,
 					QueueSize:        g.QueueSize,
@@ -646,7 +661,9 @@ func (g *OPCUAInput) MonitorBatched(ctx context.Context, nodes []NodeDef) (int, 
 
 					// Recursive call: Only pass nodes from failed point onwards
 					// This prevents re-monitoring nodes 0 to (failedNodeIndex-1) which already succeeded
-					return g.MonitorBatched(ctx, nodes[failedNodeIndex:])
+					// The handles continue at handleOffset+failedNodeIndex so they still
+					// point at the same entries of g.NodeList.
+					return g.monitorBatchedFrom(ctx, nodes[failedNodeIndex:], handleOffset+failedNodeIndex)
 				}
 
 				// Non-trial error or different error code - propagate normally

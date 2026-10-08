@@ -590,7 +590,7 @@ func (g *OPCUAInput) ReadBatchSubscribe(ctx context.Context) (service.MessageBat
 				// see also NewMonitoredItemCreateRequestWithDefaults call in other functions
 				handleID := item.ClientHandle
 
-				if uint32(len(g.NodeList)) >= handleID {
+				if handleID < uint32(len(g.NodeList)) {
 					message := g.createMessageFromValue(item.Value, g.NodeList[handleID])
 					if message != nil {
 						msgs = append(msgs, message)
