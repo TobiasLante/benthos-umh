@@ -695,7 +695,7 @@ func (gwp *GlobalWorkerPool) workerLoop(workerID uuid.UUID, controlChan chan str
 			if err != nil {
 				if task.ErrChan != nil {
 					select {
-					case task.ErrChan <- errors.Errorf("browse failed for %s: %s", task.NodeID, err):
+					case task.ErrChan <- fmt.Errorf("browse failed for %s: %w", task.NodeID, err):
 					default:
 					}
 				}

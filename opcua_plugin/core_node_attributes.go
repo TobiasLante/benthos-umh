@@ -67,7 +67,9 @@ func handleAttributeStatus(
 		return nil
 	}
 
-	return attr.Status
+	// Name the node and the attribute like the cases above; %w keeps the status for
+	// errors.Is (a node-scoped status is skipped and named by discoverNodes).
+	return fmt.Errorf("node %s attribute %s: %w", def.NodeID, name, attr.Status)
 }
 
 // handleOKStatus processes successful attribute reads

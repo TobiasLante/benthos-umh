@@ -40,6 +40,7 @@ var _ = Describe("A node the server does not have is skipped, not fatal", Label(
 		for _, s := range []ua.StatusCode{ua.StatusBadNodeIDUnknown, ua.StatusBadNodeIDInvalid, ua.StatusBadUserAccessDenied} {
 			Expect(isNodeScoped(s)).To(BeTrue(), "%v", s)
 			Expect(isNodeScoped(fmt.Errorf("node ns=2;s=X: %w", s))).To(BeTrue(), "wrapped %v", s)
+			Expect(isNodeScoped(fmt.Errorf("browse failed for ns=2;s=X: %w", s))).To(BeTrue(), "browse-wrapped %v", s)
 		}
 		for _, e := range []error{ua.StatusBadSecureChannelClosed, ua.StatusBadSessionIDInvalid, ua.StatusBadTimeout,
 			context.DeadlineExceeded, errors.New("browse pool completion failed")} {
