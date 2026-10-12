@@ -198,12 +198,23 @@ func (g *OPCUAInput) discoverNodes(ctx context.Context) ([]NodeDef, error) {
 	// Convert duplicate browse paths to NodeID-based paths to ensure unique subscription paths
 	UpdateNodePaths(nodeList)
 
-	if len(errChan) > 0 {
-		var combinedErr strings.Builder
-		for err := range errChan {
-			combinedErr.WriteString(err.Error() + "; ")
-		}
-		return nil, errors.New(combinedErr.String())
+	// A node the server does not have (or this user may not read) is skipped and
+	// named; only an error of the connection or the session fails the discovery.
+	// Before, one such node failed the discovery of ALL nodes, so the input
+	// subscribed to nothing and reconnected forever.
+	var errs []error
+	for err := range errChan {
+		errs = append(errs, err)
+	}
+	skipped, fatal := splitBrowseErrors(errs)
+	for _, msg := range skipped {
+		g.Log.Warnf("Skipping a configured node the server refuses (the other nodes are subscribed): %s", msg)
+	}
+	if fatal != nil {
+		return nil, fatal
+	}
+	if len(nodeList) == 0 && len(skipped) > 0 {
+		return nil, fmt.Errorf("none of the configured nodes is usable on the server: %s", strings.Join(skipped, "; "))
 	}
 
 	return nodeList, nil
@@ -618,7 +629,16 @@ func (g *OPCUAInput) monitorBatchedFrom(ctx context.Context, nodes []NodeDef, ha
 			return totalMonitored, errors.New("received nil response from Monitor")
 		}
 
+		skippedInBatch := 0
 		for i, result := range response.Results {
+			if monitorResultAction(result.StatusCode, shouldTrial) == monitorSkipNode {
+				// One node the server refuses: name it, leave it out, go on with the batch.
+				// Its client handle simply never gets a notification.
+				RecordSubscriptionFailure(result.StatusCode, batch[i].NodeID.String())
+				g.Log.Warnf("Skipping node %s: %v (the other nodes stay monitored)", batch[i].NodeID.String(), result.StatusCode)
+				skippedInBatch++
+				continue
+			}
 			if !errors.Is(result.StatusCode, ua.StatusOK) {
 				failedNode := batch[i].NodeID.String()
 
@@ -689,7 +709,7 @@ func (g *OPCUAInput) monitorBatchedFrom(ctx context.Context, nodes []NodeDef, ha
 			g.Log.Infof("DataChangeFilter trial succeeded. Server supports filter - capability confirmed and cached for this connection.")
 		}
 
-		monitoredNodes := len(response.Results)
+		monitoredNodes := len(response.Results) - skippedInBatch
 		totalMonitored += monitoredNodes
 		g.Log.Infof("Successfully monitored %d nodes in current batch", monitoredNodes)
 		if g.DeadbandType != "none" {
