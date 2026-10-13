@@ -98,3 +98,23 @@ var _ = Describe("A skipped node is visible on /metrics", Label("node-scoped"), 
 		Expect(g.set).To(Equal(map[string]int64{"ns=2;s=Typo|node_id_unknown": 0}))
 	})
 })
+
+// B8 (0.6.3 live check on .99): a configured node the server does not have is refused
+// by its NodeClass attribute status first; that error comes back through the
+// browse worker unchanged and must still name its node, or the gauge stays empty.
+var _ = Describe("The attribute status of an unknown node names the node", Label("node-scoped"), func() {
+	BeforeEach(func() {
+		if os.Getenv("TEST_OPCUA_UNIT") == "" {
+			Skip("Skipping OPC UA unit tests: TEST_OPCUA_UNIT not set")
+		}
+	})
+	It("skippedNodesOf finds the node of a BadNodeIdUnknown NodeClass status", func() {
+		id := ua.MustParseNodeID("ns=1;s=FindingG-DoesNotExist")
+		def := &NodeDef{NodeID: id}
+		attrs := []*ua.DataValue{{Status: ua.StatusBadNodeIDUnknown}, {Status: ua.StatusBadNodeIDUnknown}, {Status: ua.StatusBadNodeIDUnknown}, {Status: ua.StatusBadNodeIDUnknown}, {Status: ua.StatusBadNodeIDUnknown}}
+		err := processNodeAttributes(attrs, def, "root", nil)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("node ns=1;s=FindingG-DoesNotExist attribute NodeClass"))
+		Expect(skippedNodesOf([]error{err})).To(Equal([]skippedNode{{NodeID: "ns=1;s=FindingG-DoesNotExist", Status: ua.StatusBadNodeIDUnknown}}))
+	})
+})
