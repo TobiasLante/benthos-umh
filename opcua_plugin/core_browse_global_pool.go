@@ -637,7 +637,7 @@ func (gwp *GlobalWorkerPool) workerLoop(workerID uuid.UUID, controlChan chan str
 				}
 				// Send error to error channel with node ID context
 				if task.ErrChan != nil {
-					wrappedErr := fmt.Errorf("node %s: %w", task.NodeID, err)
+					wrappedErr := errOfNode("node", task.NodeID, err)
 					select {
 					case task.ErrChan <- wrappedErr:
 					case <-task.Ctx.Done():
@@ -695,7 +695,7 @@ func (gwp *GlobalWorkerPool) workerLoop(workerID uuid.UUID, controlChan chan str
 			if err != nil {
 				if task.ErrChan != nil {
 					select {
-					case task.ErrChan <- fmt.Errorf("browse failed for %s: %w", task.NodeID, err):
+					case task.ErrChan <- errOfNode("browse failed for", task.NodeID, err):
 					default:
 					}
 				}

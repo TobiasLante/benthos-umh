@@ -154,6 +154,7 @@ func newOPCUAInput(conf *service.ParsedConfig, mgr *service.Resources) (service.
 		SamplingInterval:             samplingInterval,
 		DeadbandType:                 deadbandType,
 		DeadbandValue:                deadbandValue,
+		skips:                        newSkipTracker(mgr.Metrics().NewGauge("opcua_node_skipped", "node_id", "reason")),
 	}
 
 	m.cleanup_func = func(ctx context.Context) {
@@ -263,6 +264,21 @@ type OPCUAInput struct {
 	// browseErr signals async browse failure to ReadBatch (avoids self-Close deadlock).
 	browseErrMu sync.Mutex
 	browseErr   error
+
+	// skips keeps the gauge opcua_node_skipped of the nodes this input skips now.
+	skips *skipTracker
+}
+
+// clearSkipped sets the gauge of every node this input skipped back to 0.
+func (g *OPCUAInput) clearSkipped(ctx context.Context) error {
+	g.skips.clear()
+	return nil
+}
+
+// Close clears the skipped nodes of this input, then closes the connection.
+func (g *OPCUAInput) Close(ctx context.Context) error {
+	_ = g.clearSkipped(ctx)
+	return g.OPCUAConnection.Close(ctx)
 }
 
 // unsubscribeAndResetHeartbeat unsubscribes from the OPC UA subscription and resets the heartbeat

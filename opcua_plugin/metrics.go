@@ -46,6 +46,8 @@ func classifyFailureReason(statusCode ua.StatusCode) string {
 		return "node_id_unknown"
 	case ua.StatusBadNodeIDInvalid:
 		return "node_id_invalid"
+	case ua.StatusBadUserAccessDenied:
+		return "access_denied"
 	default:
 		return "other"
 	}

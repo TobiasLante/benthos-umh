@@ -207,6 +207,11 @@ func (g *OPCUAInput) discoverNodes(ctx context.Context) ([]NodeDef, error) {
 		errs = append(errs, err)
 	}
 	skipped, fatal := splitBrowseErrors(errs)
+	// a new discovery: what was skipped before is said anew (a node fixed on the server is no longer skipped)
+	g.skips.clear()
+	for _, n := range skippedNodesOf(errs) {
+		g.skips.mark(n.NodeID, n.Status)
+	}
 	for _, msg := range skipped {
 		g.Log.Warnf("Skipping a configured node the server refuses (the other nodes are subscribed): %s", msg)
 	}
@@ -634,7 +639,7 @@ func (g *OPCUAInput) monitorBatchedFrom(ctx context.Context, nodes []NodeDef, ha
 			if monitorResultAction(result.StatusCode, shouldTrial) == monitorSkipNode {
 				// One node the server refuses: name it, leave it out, go on with the batch.
 				// Its client handle simply never gets a notification.
-				RecordSubscriptionFailure(result.StatusCode, batch[i].NodeID.String())
+				g.skips.mark(batch[i].NodeID.String(), result.StatusCode)
 				g.Log.Warnf("Skipping node %s: %v (the other nodes stay monitored)", batch[i].NodeID.String(), result.StatusCode)
 				skippedInBatch++
 				continue
