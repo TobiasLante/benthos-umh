@@ -582,8 +582,11 @@ func (g *OPCUAInput) ReadBatchSubscribe(ctx context.Context) (service.MessageBat
 	case res = <-g.SubNotifyChan:
 		// Received a result, check for error
 		if res.Error != nil {
-			g.Log.Errorf("ReadBatchSubscribe error: %s", res.Error)
-			return nil, nil, res.Error
+			// B20 (UNSaC 0.6.6 P18): an error on the subscription channel ("next sequence number not in retransmission buffer",
+			// a lost session) does not heal by itself — close the client so benthos reconnects: a new session and subscription
+			g.Log.Errorf("ReadBatchSubscribe error: %s — closing the connection for a new session and subscription", res.Error)
+			_ = g.Close(ctx)
+			return nil, nil, service.ErrNotConnected
 		}
 
 		if g.NodeList == nil {
@@ -613,6 +616,15 @@ func (g *OPCUAInput) ReadBatchSubscribe(ctx context.Context) (service.MessageBat
 					}
 				}
 			}
+		case *ua.StatusChangeNotification:
+			// B20: the server reports the subscription's state; a bad one (BadShutdown, BadTimeout, BadServerHalted …) means the
+			// subscription is gone — without a reconnect the reader stays silent until its container restarts
+			if x.Status != ua.StatusOK && uint32(x.Status)&0x80000000 != 0 {
+				g.Log.Warnf("Subscription status %s — closing the connection for a new session and subscription", x.Status)
+				_ = g.Close(ctx)
+				return nil, nil, service.ErrNotConnected
+			}
+			g.Log.Infof("Subscription status %s", x.Status)
 		default:
 			g.Log.Errorf("Unknown publish result %T", res.Value)
 		}
