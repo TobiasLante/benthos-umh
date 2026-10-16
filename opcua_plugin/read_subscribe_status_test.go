@@ -65,6 +65,14 @@ var _ = Describe("ReadBatch after a lost subscription", Label("b20-resubscribe")
 		})
 	}
 
+	// the .111 reproduction with 0.1.9 (40 min outage of the real machines-sgm): the client's own reconnect TRANSFERS the subscription
+	// (StatusGoodSubscriptionTransferred, a "good" status) — then "next sequence number not in retransmission buffer" and no value ever
+	It("a StatusChangeNotification GoodSubscriptionTransferred closes the client and asks benthos to reconnect", func() {
+		_, err := read(&opcua.PublishNotificationData{Value: &ua.StatusChangeNotification{Status: ua.StatusGoodSubscriptionTransferred}})
+		Expect(errors.Is(err, service.ErrNotConnected)).To(BeTrue(), "got %v", err)
+		Expect(cleaned).To(Equal(1))
+	})
+
 	It("an error from the subscription channel closes the client and asks benthos to reconnect", func() {
 		_, err := read(&opcua.PublishNotificationData{Error: errors.New("next sequence number not in retransmission buffer")})
 		Expect(errors.Is(err, service.ErrNotConnected)).To(BeTrue(), "got %v", err)
