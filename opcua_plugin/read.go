@@ -619,7 +619,8 @@ func (g *OPCUAInput) ReadBatchSubscribe(ctx context.Context) (service.MessageBat
 		case *ua.StatusChangeNotification:
 			// B20: the server reports the subscription's state; a bad one (BadShutdown, BadTimeout, BadServerHalted …) means the
 			// subscription is gone — without a reconnect the reader stays silent until its container restarts
-			if x.Status != ua.StatusOK && uint32(x.Status)&0x80000000 != 0 {
+			// a transferred subscription is no healthy one either (B20 on .111: transferred after the outage, then never a value)
+			if x.Status == ua.StatusGoodSubscriptionTransferred || (x.Status != ua.StatusOK && uint32(x.Status)&0x80000000 != 0) {
 				g.Log.Warnf("Subscription status %s — closing the connection for a new session and subscription", x.Status)
 				_ = g.Close(ctx)
 				return nil, nil, service.ErrNotConnected
